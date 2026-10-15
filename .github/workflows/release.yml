@@ -1,0 +1,72 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-linux-musl, artifact: tarot-linux-x86_64 }
+          - { os: ubuntu-latest, target: aarch64-linux-musl, artifact: tarot-linux-aarch64 }
+          - { os: macos-latest, target: x86_64-macos, artifact: tarot-macos-x86_64 }
+          - { os: macos-latest, target: aarch64-macos, artifact: tarot-macos-aarch64 }
+          - { os: windows-latest, target: x86_64-windows, artifact: tarot-windows-x64.exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.1
+      - name: verify before shipping (unix)
+        if: runner.os != 'Windows'
+        run: |
+          zig build test
+          zig build -Doptimize=ReleaseSafe
+          bash test/e2e_local.sh
+      - name: verify before shipping (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          zig build test
+          zig build -Doptimize=ReleaseSafe
+          ./zig-out/bin/tarot.exe forge worm worm.tar
+          ./zig-out/bin/tarot.exe scan worm.tar --quiet
+          if ($LASTEXITCODE -ne 2) { Write-Error "worm should exit 2"; exit 2 }
+      - name: stage artifact
+        shell: bash
+        run: |
+          set -e
+          ART="${{ matrix.artifact }}"
+          if [ -f zig-out/bin/tarot ]; then cp zig-out/bin/tarot "$ART";
+          elif [ -f zig-out/bin/tarot.exe ]; then cp zig-out/bin/tarot.exe "$ART";
+          else echo "no binary produced"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  publish:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - name: checksums
+        run: |
+          cd dist
+          sha256sum tarot-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/tarot-*
+            dist/SHA256SUMS

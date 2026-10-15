@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.1
+      - name: unit tests
+        run: zig build test
+      - name: build (release-safe)
+        run: zig build -Doptimize=ReleaseSafe
+      - name: e2e (unix)
+        if: runner.os != 'Windows'
+        run: bash test/e2e_local.sh
+      - name: e2e (windows smoke)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./zig-out/bin/tarot.exe forge clean clean.tar
+          ./zig-out/bin/tarot.exe scan clean.tar --quiet
+          if ($LASTEXITCODE -ne 0) { Write-Error "clean should exit 0"; exit 1 }
+          ./zig-out/bin/tarot.exe forge worm worm.tar
+          ./zig-out/bin/tarot.exe scan worm.tar --quiet
+          if ($LASTEXITCODE -ne 2) { Write-Error "worm should exit 2"; exit 2 }
+          ./zig-out/bin/tarot.exe forge traversal t.tar
+          ./zig-out/bin/tarot.exe scan t.tar --json
+          if ($LASTEXITCODE -ne 2) { Write-Error "traversal should exit 2"; exit 2 }
+          Write-Host "windows smoke OK"
