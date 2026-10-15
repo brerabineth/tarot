@@ -44,10 +44,10 @@ jobs:
             *)       echo "$HOME/.zig/$dir" >> "$GITHUB_PATH" ;;
           esac
           if [ "${{ runner.os }}" = "macOS" ]; then
-            # zig 0.14.1 cannot parse tbd libs from Xcode 26 SDKs; pin the newest 16.x
-            PICK=$(ls /Applications | grep -o 'Xcode_[0-9.]*\.app' | sort -V | awk '$0 < "Xcode_26"' | tail -1)
-            if [ -n "$PICK" ]; then sudo xcode-select -s "/Applications/$PICK"; fi
-            echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+            # runners preset SDKROOT to Xcode 26; zig 0.14.1 cannot parse those
+            # tbd libraries. neutralize it so zig falls back to its bundled
+            # darwin libc stubs (same path it uses when cross-compiling).
+            echo "SDKROOT=" >> "$GITHUB_ENV"
           fi
       - name: verify before shipping (unix)
         if: runner.os != 'Windows'
