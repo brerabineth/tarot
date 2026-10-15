@@ -39,7 +39,13 @@ jobs:
             *)       tar -xf /tmp/zigpkg -C "$HOME/.zig" ;;
           esac
           dir="${f%.tar.xz}"; dir="${dir%.zip}"
-          echo "$HOME/.zig/$dir" >> "$GITHUB_PATH"
+          case "${{ runner.os }}" in
+            Windows) echo "$(cygpath -w "$HOME/.zig/$dir")" >> "$GITHUB_PATH" ;;
+            *)       echo "$HOME/.zig/$dir" >> "$GITHUB_PATH" ;;
+          esac
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+          fi
       - name: verify before shipping (unix)
         if: runner.os != 'Windows'
         run: |
