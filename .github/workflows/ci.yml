@@ -6,53 +6,45 @@ on:
   pull_request:
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  linux:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: install zig 0.14.1
-        shell: bash
         run: |
           set -e
-          case "${{ runner.os }}/${{ runner.arch }}" in
-            Linux/X64)    f=zig-x86_64-linux-0.14.1.tar.xz ;;
-            macOS/ARM64)  f=zig-aarch64-macos-0.14.1.tar.xz ;;
-            macOS/X64)    f=zig-x86_64-macos-0.14.1.tar.xz ;;
-            Windows/X64)  f=zig-x86_64-windows-0.14.1.zip ;;
-            *) echo "unsupported runner: ${{ runner.os }}/${{ runner.arch }}"; exit 1 ;;
-          esac
+          f=zig-x86_64-linux-0.14.1.tar.xz
           curl -fsSL --retry 3 -o /tmp/zigpkg "https://ziglang.org/download/0.14.1/$f"
           mkdir -p "$HOME/.zig"
-          case "${{ runner.os }}" in
-            Windows) unzip -q /tmp/zigpkg -d "$HOME/.zig" ;;
-            *)       tar -xf /tmp/zigpkg -C "$HOME/.zig" ;;
-          esac
-          dir="${f%.tar.xz}"; dir="${dir%.zip}"
-          case "${{ runner.os }}" in
-            Windows) echo "$(cygpath -w "$HOME/.zig/$dir")" >> "$GITHUB_PATH" ;;
-            *)       echo "$HOME/.zig/$dir" >> "$GITHUB_PATH" ;;
-          esac
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            # runners preset SDKROOT to Xcode 26; zig 0.14.1 cannot parse those
-            # tbd libraries. neutralize it so zig falls back to its bundled
-            # darwin libc stubs (same path it uses when cross-compiling).
-            echo "SDKROOT=" >> "$GITHUB_ENV"
-          fi
+          tar -xf /tmp/zigpkg -C "$HOME/.zig"
+          echo "$HOME/.zig/${f%.tar.xz}" >> "$GITHUB_PATH"
       - name: toolchain check
         run: zig version
       - name: unit tests
         run: zig build test
       - name: build (release-safe)
         run: zig build -Doptimize=ReleaseSafe
-      - name: e2e (unix)
-        if: runner.os != 'Windows'
+      - name: e2e
         run: bash test/e2e_local.sh
-      - name: e2e (windows smoke)
-        if: runner.os == 'Windows'
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install zig 0.14.1
+        shell: bash
+        run: |
+          set -e
+          f=zig-x86_64-windows-0.14.1.zip
+          curl -fsSL --retry 3 -o /tmp/zigpkg "https://ziglang.org/download/0.14.1/$f"
+          mkdir -p "$HOME/.zig"
+          unzip -q /tmp/zigpkg -d "$HOME/.zig"
+          echo "$(cygpath -w "$HOME/.zig/${f%.zip}")" >> "$GITHUB_PATH"
+      - name: unit tests
+        run: zig build test
+      - name: build (release-safe)
+        run: zig build -Doptimize=ReleaseSafe
+      - name: windows smoke
         shell: pwsh
         run: |
           ./zig-out/bin/tarot.exe forge clean clean.tar
@@ -66,3 +58,26 @@ jobs:
           if ($LASTEXITCODE -ne 2) { Write-Error "traversal should exit 2"; exit 2 }
           Write-Host "windows smoke OK"
           exit 0
+
+  cross:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install zig 0.14.1
+        run: |
+          set -e
+          f=zig-x86_64-linux-0.14.1.tar.xz
+          curl -fsSL --retry 3 -o /tmp/zigpkg "https://ziglang.org/download/0.14.1/$f"
+          mkdir -p "$HOME/.zig"
+          tar -xf /tmp/zigpkg -C "$HOME/.zig"
+          echo "$HOME/.zig/${f%.tar.xz}" >> "$GITHUB_PATH"
+      - name: cross-compile (macos aarch64/x86_64, linux aarch64)
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+          file zig-out/bin/tarot
+          rm -rf zig-out .zig-cache
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-macos
+          file zig-out/bin/tarot
+          rm -rf zig-out .zig-cache
+          zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
+          file zig-out/bin/tarot
