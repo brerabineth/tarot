@@ -14,9 +14,27 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v1
-        with:
-          version: 0.14.1
+      - name: install zig 0.14.1
+        shell: bash
+        run: |
+          set -e
+          case "${{ runner.os }}/${{ runner.arch }}" in
+            Linux/X64)    f=zig-x86_64-linux-0.14.1.tar.xz ;;
+            macOS/ARM64)  f=zig-aarch64-macos-0.14.1.tar.xz ;;
+            macOS/X64)    f=zig-x86_64-macos-0.14.1.tar.xz ;;
+            Windows/X64)  f=zig-x86_64-windows-0.14.1.zip ;;
+            *) echo "unsupported runner: ${{ runner.os }}/${{ runner.arch }}"; exit 1 ;;
+          esac
+          curl -fsSL --retry 3 -o /tmp/zigpkg "https://ziglang.org/download/0.14.1/$f"
+          mkdir -p "$HOME/.zig"
+          case "${{ runner.os }}" in
+            Windows) unzip -q /tmp/zigpkg -d "$HOME/.zig" ;;
+            *)       tar -xf /tmp/zigpkg -C "$HOME/.zig" ;;
+          esac
+          dir="${f%.tar.xz}"; dir="${dir%.zip}"
+          echo "$HOME/.zig/$dir" >> "$GITHUB_PATH"
+      - name: toolchain check
+        run: zig version
       - name: unit tests
         run: zig build test
       - name: build (release-safe)
