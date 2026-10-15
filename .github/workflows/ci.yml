@@ -37,6 +37,9 @@ jobs:
             *)       echo "$HOME/.zig/$dir" >> "$GITHUB_PATH" ;;
           esac
           if [ "${{ runner.os }}" = "macOS" ]; then
+            # zig 0.14.1 cannot parse tbd libs from Xcode 26 SDKs; pin the newest 16.x
+            PICK=$(ls /Applications | grep -o 'Xcode_[0-9.]*\.app' | sort -V | awk '$0 < "Xcode_26"' | tail -1)
+            if [ -n "$PICK" ]; then sudo xcode-select -s "/Applications/$PICK"; fi
             echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
           fi
       - name: toolchain check
@@ -62,3 +65,4 @@ jobs:
           ./zig-out/bin/tarot.exe scan t.tar --json
           if ($LASTEXITCODE -ne 2) { Write-Error "traversal should exit 2"; exit 2 }
           Write-Host "windows smoke OK"
+          exit 0

@@ -44,6 +44,9 @@ jobs:
             *)       echo "$HOME/.zig/$dir" >> "$GITHUB_PATH" ;;
           esac
           if [ "${{ runner.os }}" = "macOS" ]; then
+            # zig 0.14.1 cannot parse tbd libs from Xcode 26 SDKs; pin the newest 16.x
+            PICK=$(ls /Applications | grep -o 'Xcode_[0-9.]*\.app' | sort -V | awk '$0 < "Xcode_26"' | tail -1)
+            if [ -n "$PICK" ]; then sudo xcode-select -s "/Applications/$PICK"; fi
             echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
           fi
       - name: verify before shipping (unix)
@@ -61,6 +64,7 @@ jobs:
           ./zig-out/bin/tarot.exe forge worm worm.tar
           ./zig-out/bin/tarot.exe scan worm.tar --quiet
           if ($LASTEXITCODE -ne 2) { Write-Error "worm should exit 2"; exit 2 }
+          exit 0
       - name: build target
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}
       - name: stage artifact
